@@ -12,7 +12,10 @@
   "license": "ISC",
   "type": "module",
   "devDependencies": {
-    "typescript": "^5.9.3",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^5.3.6"
   }
 }
