@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "tsx src/index.ts",
+    "start-scraper": "tsx src/scraper.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -12,10 +13,13 @@
   "license": "ISC",
   "type": "module",
   "devDependencies": {
+    "@types/node": "^25.2.3",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "fast-xml-parser": "^5.3.6"
+    "fast-xml-parser": "^5.3.6",
+    "fs-extra": "^11.3.3",
+    "puppeteer": "^24.37.3"
   }
 }
