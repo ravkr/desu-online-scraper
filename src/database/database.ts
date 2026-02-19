@@ -1,0 +1,20 @@
+import {DataSource} from "typeorm"
+import {PageEntity} from "./entities/PageEntity.js";
+
+export const AppDataSource = new DataSource({
+    type: "postgres",
+    host: "localhost",
+    port: 5432,
+    username: "desu-online-scraper",
+    password: "",
+    database: "desu_online_scraper",
+    entities: [PageEntity],
+    synchronize: true, // TODO: this is only for development
+})
+
+try {
+    await AppDataSource.initialize()
+    console.log("Data Source has been initialized!")
+} catch (error) {
+    console.error("Error during Data Source initialization", error)
+}
