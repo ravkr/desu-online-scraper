@@ -1,3 +1,4 @@
+import "reflect-metadata"
 import {DataSource} from "typeorm"
 import {PageEntity} from "./entities/PageEntity.js";
 

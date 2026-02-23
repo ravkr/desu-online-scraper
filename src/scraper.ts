@@ -1,8 +1,11 @@
+import "reflect-metadata"
 import puppeteer from 'puppeteer';
 import {readFile, writeFile, mkdir} from "node:fs/promises";
 import {XMLParser} from "fast-xml-parser";
 
 import {setTimeout} from "node:timers/promises";
+import {PageEntity} from "./database/entities/PageEntity.js";
+import {AppDataSource} from "./database/database.js";
 
 const DOMAIN = 'https://desu-online.pl/'
 const SITEMAP_PATH = `sitemap_index.xml`
@@ -11,10 +14,10 @@ async function getCachedFile(path: string) {
     const cachePath = `./cache/${path}`;
     try {
         const data = await readFile(cachePath, 'utf-8');
-        console.log(`Cache hit for ${path}`);
+        // console.log(`Cache hit for ${path}`);
         return data;
     } catch (err) {
-        console.log(`Cache miss for ${path}`);
+        // console.log(`Cache miss for ${path}`);
         return null;
     }
 }
@@ -54,7 +57,7 @@ const sitemapQueue: string[] = [
     SITEMAP_PATH,
 ];
 
-const foundUrls: Map<string, string[]> = new Map();
+const foundUrls: Map<string, { url: string, lastModified: string }[]> = new Map();
 
 function getSitemapCategory(sitemapName: string) {
     const match = sitemapName.match(/^(.*?)-sitemap\d*\.xml$/);
@@ -80,7 +83,10 @@ function parseSitemap(sitemapName: string, result: any) {
         foundUrls.set(category, array);
 
         for (const url of urls) {
-            array.push(url.loc);
+            array.push({
+                url: url.loc,
+                lastModified: url.lastmod
+            });
         }
     } else {
         console.warn('Unknown sitemap format');
@@ -88,10 +94,9 @@ function parseSitemap(sitemapName: string, result: any) {
 }
 
 async function main() {
-
     let nextItem: string | undefined;
     while (nextItem = sitemapQueue.shift()) {
-        console.log(`Processing ${nextItem}`);
+        // console.log(`Processing ${nextItem}`);
         const sitemapText = await getFile(nextItem)
 
         const parser = new XMLParser({
@@ -101,8 +106,26 @@ async function main() {
         parseSitemap(nextItem, result)
     }
 
-    for (const [category, urls] of foundUrls.entries()) {
-        console.log(`Category: ${category}, URLs: ${urls.length}`);
+    const pageRepository = AppDataSource.getRepository(PageEntity);
+
+    console.time('Saving entries to database');
+    for (const [category, pages] of foundUrls.entries()) {
+        for (const page of pages) {
+            try {
+                await pageRepository.upsert(
+                    {
+                        url: page.url,
+                        sitemapSource: category,
+                        sitemapLastModified: page.lastModified !== undefined
+                            ? new Date(page.lastModified)
+                            : null,
+                    },
+                    ['url']
+                );
+            } catch (err) {
+                console.error(`Error saving page`, category, page);
+            }
+        }
     }
 }
 
@@ -126,9 +149,9 @@ const browser = await puppeteer.launch({
     headless: false,
 });
 
-// await main()
+await main()
 
 
-await main2()
+// await main2()
 
 await browser.close()

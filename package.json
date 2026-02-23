@@ -20,6 +20,8 @@
   "dependencies": {
     "fast-xml-parser": "^5.3.6",
     "fs-extra": "^11.3.3",
-    "puppeteer": "^24.37.3"
+    "pg": "^8.18.0",
+    "puppeteer": "^24.37.3",
+    "typeorm": "^0.3.28"
   }
 }
