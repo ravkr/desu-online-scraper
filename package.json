@@ -4,8 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "build:watch": "tsc --watch",
     "start": "tsx src/index.ts",
     "start-scraper": "tsx src/scraper.ts",
+    "import-sitemap": "tsx src/sitemapImporter.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
