@@ -20,7 +20,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "fast-xml-parser": "^5.3.6",
+    "fast-xml-parser": "^5.5.8",
     "fs-extra": "^11.3.3",
     "pg": "^8.18.0",
     "puppeteer": "^24.37.3",
