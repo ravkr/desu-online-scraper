@@ -1,21 +1,23 @@
-import "reflect-metadata"
-import {DataSource} from "typeorm"
-import {PageEntity} from "./entities/PageEntity.js";
+import 'reflect-metadata';
+import { DataSource } from 'typeorm';
+import { PageEntity } from './entities/PageEntity.js';
+import { EpisodeEntity } from './entities/EpisodeEntity.js';
+import { EpisodeSource } from './entities/EpisodeSource.js';
 
 export const AppDataSource = new DataSource({
-    type: "postgres",
-    host: "localhost",
-    port: 5432,
-    username: "desu-online-scraper",
-    password: "",
-    database: "desu_online_scraper",
-    entities: [PageEntity],
-    synchronize: true, // TODO: this is only for development
-})
+  type: 'postgres',
+  host: 'localhost',
+  port: 5432,
+  username: 'desu-online-scraper',
+  password: '',
+  database: 'desu_online_scraper',
+  entities: [PageEntity, EpisodeEntity, EpisodeSource],
+  synchronize: true // TODO: this is only for development
+});
 
 try {
-    await AppDataSource.initialize()
-    console.log("Data Source has been initialized!")
+  await AppDataSource.initialize();
+  console.log('Data Source has been initialized!');
 } catch (error) {
-    console.error("Error during Data Source initialization", error)
+  console.error('Error during Data Source initialization', error);
 }

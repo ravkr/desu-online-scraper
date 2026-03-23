@@ -1,157 +1,141 @@
-import "reflect-metadata"
-import puppeteer from 'puppeteer';
-import {readFile, writeFile, mkdir} from "node:fs/promises";
-import {XMLParser} from "fast-xml-parser";
+import 'reflect-metadata';
 
-import {setTimeout} from "node:timers/promises";
-import {PageEntity} from "./database/entities/PageEntity.js";
-import {AppDataSource} from "./database/database.js";
+import { PageEntity } from './database/entities/PageEntity.js';
+import { AppDataSource } from './database/database.js';
+import { BrowserController } from './browser/BrowserController.js';
+import { YoastArticleTag, YoastSeo } from './types/YoastSeo.types.js';
+import { EpisodeData } from './types/EpisodeData.type.js';
+import { EpisodeEntity } from './database/entities/EpisodeEntity.js';
+import { EpisodeSource } from './database/entities/EpisodeSource.js';
+import { SourceStatus } from './database/SourceStatus.js';
 
-const DOMAIN = 'https://desu-online.pl/'
-const SITEMAP_PATH = `sitemap_index.xml`
 
-async function getCachedFile(path: string) {
-    const cachePath = `./cache/${path}`;
-    try {
-        const data = await readFile(cachePath, 'utf-8');
-        // console.log(`Cache hit for ${path}`);
-        return data;
-    } catch (err) {
-        // console.log(`Cache miss for ${path}`);
-        return null;
-    }
-}
+async function scrapeEpisodePage() {
+  const url = 'https://desu-online.pl/shingeki-no-kyojin-odcinek-1/';
+  const bc = BrowserController.getInstance();
+  await bc.openBrowser();
 
-async function downloadFile(filepath: string, saveCache: boolean = true) {
-    const page = await browser.newPage();
+  const page = await bc.newPage();
 
-    await page.setViewport(null);
+  await page.setViewport(null);
 
-    const response = await page.goto(`${DOMAIN}${filepath}`);
+  await page.setRequestInterception(true);
+  page.on('request', interceptedRequest => {
+    if (interceptedRequest.isInterceptResolutionHandled()) return;
 
-    // ProtocolError: Protocol error (network.getData): unknown error RangeError: source array is too long decodeResponseChunks@resource://devtools/shared/network-observer/NetworkUtils.sys.mjs:803:11
-    const data = await response!.text();
-    console.log(`Got ${filepath}`);
+    if (interceptedRequest.isNavigationRequest() && interceptedRequest.frame() === page.mainFrame()) {
+      interceptedRequest.continue();
 
-    await page.close();
-
-    if (saveCache) {
-        const cachePath = `./cache/${filepath}`;
-        await mkdir(`./cache`, {recursive: true});
-        await writeFile(cachePath, data, 'utf-8');
+      return;
     }
 
-    return data;
-}
+    if (interceptedRequest.url().startsWith('data:image/')) {
+      interceptedRequest.continue();
 
-async function getFile(path: string) {
-    const cachedData = await getCachedFile(path);
-    if (cachedData) {
-        return cachedData;
+      return;
     }
 
-    return downloadFile(path, true);
+    interceptedRequest.abort();
+  });
+
+  await page.goto(url);
+
+  const resultObj = await page.evaluate('[...document.querySelectorAll(\'div.video-nav div.mobius select.mirror option[data-index]\')].map(el => ({code: atob(el.value), index: el.dataset.index, name: el.text}))');
+
+  const yoastSeoString = await page.evaluate('document.querySelector(\'script[type="application/ld+json"].yoast-schema-graph\')?.textContent;') as string;
+
+  const yoastSeo = JSON.parse(yoastSeoString) as YoastSeo;
+
+  const articleTag = yoastSeo['@graph'].find((el: any) => el['@type'] === 'Article') as YoastArticleTag | undefined;
+
+  const imageUrl = await page.evaluate('document.querySelector(\'meta[property="og:image"]\')?.content;') as string;
+
+  const wpPageId = parseInt(await page.evaluate('document.querySelector(\'link[rel="alternate"][type="application/json"]\').href.match(/posts\\/(\\d+)$/)?.[1];') as string);
+
+  const animeSeriesUrl = await page.evaluate('document.querySelector(\'div.lm > span.year > a\').href;') as string;
+  const animeSeriesName = animeSeriesUrl.match(/anime\/([^/]+)\//)?.[1];
+
+  const episodeData : EpisodeData = {
+    title: articleTag?.headline || '',
+    author: articleTag?.author?.name || '',
+    datePublished: articleTag?.datePublished ? new Date(articleTag.datePublished) : undefined,
+    dataModified: articleTag?.dateModified ? new Date(articleTag.dateModified) : undefined,
+    seriesName: animeSeriesName,
+    imageUrl,
+    wpPageId
+  } as EpisodeData;
+
+  console.log(episodeData);
+
+  await saveEpisodeData(url, episodeData, resultObj as any);
+
+  await page.close();
+  await bc.closeBrowser();
 }
 
-const sitemapQueue: string[] = [
-    SITEMAP_PATH,
-];
+export function extractMirrorUrl(code: string): string | null {
+  const match = code.match(/src=["']([^"']+)["']/i);
 
-const foundUrls: Map<string, { url: string, lastModified: string }[]> = new Map();
+  return match ? match[1] : null;
+}
 
-function getSitemapCategory(sitemapName: string) {
-    const match = sitemapName.match(/^(.*?)-sitemap\d*\.xml$/);
-    if (match) {
-        return match[1];
+async function saveEpisodeData(
+  url: string,
+  episodeData: EpisodeData,
+  mirrors: {code: string, index: string, name: string}[]
+) {
+  await AppDataSource.transaction(async (manager) => {
+    const pageRepository = manager.getRepository(PageEntity);
+    const episodeRepository = manager.getRepository(EpisodeEntity);
+    const sourceRepository = manager.getRepository(EpisodeSource);
+
+    let pageEntity = await pageRepository.findOneBy({ url });
+
+    if (!pageEntity) {
+      console.warn(`Page with URL ${url} not found in database. Creating new entry.`);
+      pageEntity = pageRepository.create({
+        url,
+        sitemapSource: 'unknown',
+        sitemapLastModified: null
+      });
+      await pageRepository.save(pageEntity);
     }
-    return 'unknown';
-}
 
-function parseSitemap(sitemapName: string, result: any) {
-    if (result.sitemapindex) {
-        const sitemaps = result.sitemapindex.sitemap;
-        for (const sitemap of sitemaps) {
-            const loc = sitemap.loc;
-            const path = loc.replace(DOMAIN, '');
-            sitemapQueue.push(path);
-            console.log(`Found sitemap: ${loc}`);
-        }
-    } else if (result.urlset) {
-        const urls = result.urlset.url;
-        const category = getSitemapCategory(sitemapName);
-        const array = foundUrls.get(category) || [];
-        foundUrls.set(category, array);
+    const result = await episodeRepository.upsert(
+      {
+        title: episodeData.title,
+        pageId: pageEntity.id,
+        wpPageId: episodeData.wpPageId,
+        author: episodeData.author || null,
+        datePublished: episodeData.datePublished || null,
+        dateModified: episodeData.dataModified || null,
+        seriesName: episodeData.seriesName,
+        imageUrl: episodeData.imageUrl || null,
+        pageEntity
+      } as any,
+      ['wpPageId']
+    );
 
-        for (const url of urls) {
-            array.push({
-                url: url.loc,
-                lastModified: url.lastmod
-            });
-        }
-    } else {
-        console.warn('Unknown sitemap format');
-    }
-}
+    console.log('result.identifiers', result.identifiers);
 
-async function main() {
-    let nextItem: string | undefined;
-    while (nextItem = sitemapQueue.shift()) {
-        // console.log(`Processing ${nextItem}`);
-        const sitemapText = await getFile(nextItem)
+    const episode = await episodeRepository.findOneByOrFail({ wpPageId: episodeData.wpPageId });
 
-        const parser = new XMLParser({
-            ignoreAttributes: false,
-        });
-        const result = parser.parse(sitemapText);
-        parseSitemap(nextItem, result)
+    if (mirrors.length > 0) {
+      const mirrorRows = mirrors.map((mirror) => ({
+        episode,
+        code: mirror.code,
+        index: mirror.index,
+        name: mirror.name,
+        url: extractMirrorUrl(mirror.code),
+        status: SourceStatus.UNKNOWN,
+        lastCheckedAt: null
+      }));
+
+      await sourceRepository.upsert(mirrorRows as any, ['episode', 'code']);
     }
 
-    const pageRepository = AppDataSource.getRepository(PageEntity);
-
-    console.time('Saving entries to database');
-    for (const [category, pages] of foundUrls.entries()) {
-        for (const page of pages) {
-            try {
-                await pageRepository.upsert(
-                    {
-                        url: page.url,
-                        sitemapSource: category,
-                        sitemapLastModified: page.lastModified !== undefined
-                            ? new Date(page.lastModified)
-                            : null,
-                    },
-                    ['url']
-                );
-            } catch (err) {
-                console.error(`Error saving page`, category, page);
-            }
-        }
-    }
+    console.log(`Saved episode ${episodeData.wpPageId} with ${mirrors.length} mirrors.`);
+  });
 }
 
-async function main2() {
-    const url = 'https://desu-online.pl/shingeki-no-kyojin-odcinek-1/'
-    const page = await browser.newPage();
-
-    await page.setViewport(null);
-
-    const response = await page.goto(url);
-    const data = await response!.text();
-    console.log(data);
-
-    await page.close();
-}
-
-const browser = await puppeteer.launch({
-    // TODO: nie można użyć Firefoxa, bo:
-    // ProtocolError: Protocol error (network.getData): unknown error RangeError: source array is too long decodeResponseChunks@resource://devtools/shared/network-observer/NetworkUtils.sys.mjs:803:11
-    // browser: "firefox",
-    headless: false,
-});
-
-await main()
-
-
-// await main2()
-
-await browser.close()
+await scrapeEpisodePage();
