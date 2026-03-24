@@ -6,7 +6,7 @@ import { BrowserController } from './browser/BrowserController.js';
 import { YoastArticleTag, YoastSeo } from './types/YoastSeo.types.js';
 import { EpisodeData } from './types/EpisodeData.type.js';
 import { EpisodeEntity } from './database/entities/EpisodeEntity.js';
-import { EpisodeSource } from './database/entities/EpisodeSource.js';
+import { EpisodeSourceEntity } from './database/entities/EpisodeSourceEntity.js';
 import { SourceStatus } from './database/SourceStatus.js';
 
 
@@ -87,7 +87,7 @@ async function saveEpisodeData(
   await AppDataSource.transaction(async (manager) => {
     const pageRepository = manager.getRepository(PageEntity);
     const episodeRepository = manager.getRepository(EpisodeEntity);
-    const sourceRepository = manager.getRepository(EpisodeSource);
+    const sourceRepository = manager.getRepository(EpisodeSourceEntity);
 
     let pageEntity = await pageRepository.findOneBy({ url });
 

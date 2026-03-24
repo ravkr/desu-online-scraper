@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { PageEntity } from './entities/PageEntity.js';
 import { EpisodeEntity } from './entities/EpisodeEntity.js';
-import { EpisodeSource } from './entities/EpisodeSource.js';
+import { EpisodeSourceEntity } from './entities/EpisodeSourceEntity.js';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
@@ -11,7 +11,7 @@ export const AppDataSource = new DataSource({
   username: 'desu-online-scraper',
   password: '',
   database: 'desu_online_scraper',
-  entities: [PageEntity, EpisodeEntity, EpisodeSource],
+  entities: [PageEntity, EpisodeEntity, EpisodeSourceEntity],
   synchronize: true // TODO: this is only for development
 });
 

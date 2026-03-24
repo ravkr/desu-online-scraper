@@ -8,7 +8,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn, OneToOne
 } from 'typeorm';
-import { EpisodeSource } from './EpisodeSource.js';
+import { EpisodeSourceEntity } from './EpisodeSourceEntity.js';
 import { PageEntity } from './PageEntity.js';
 
 @Entity('episodes')
@@ -46,8 +46,8 @@ export class EpisodeEntity {
   @OneToOne(() => PageEntity, { cascade: true })
   pageEntity!: PageEntity;
 
-  @OneToMany(() => EpisodeSource, (s) => s.episode)
-  sources!: EpisodeSource[];
+  @OneToMany(() => EpisodeSourceEntity, (s) => s.episode)
+  sources!: EpisodeSourceEntity[];
 
   @CreateDateColumn()
   createdAt: Date | undefined;

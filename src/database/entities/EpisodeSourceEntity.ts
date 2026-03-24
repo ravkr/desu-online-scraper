@@ -11,7 +11,7 @@ import { SourceStatus } from '../SourceStatus.js';
 
 @Entity('episode_sources')
 @Index(['episode', 'code'], { unique: true })
-export class EpisodeSource {
+export class EpisodeSourceEntity {
   @PrimaryGeneratedColumn()
   id!: number;
 
