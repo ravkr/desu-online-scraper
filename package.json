@@ -15,15 +15,21 @@
   "license": "ISC",
   "type": "module",
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@stylistic/eslint-plugin": "^5.10.0",
     "@types/node": "^25.2.3",
+    "eslint": "^10.1.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.57.2"
   },
   "dependencies": {
     "fast-xml-parser": "^5.5.8",
     "fs-extra": "^11.3.3",
+    "globals": "^17.4.0",
     "pg": "^8.18.0",
     "puppeteer": "^24.37.3",
-    "typeorm": "^0.3.28"
+    "typeorm": "^0.3.28",
+    "zod": "^4.3.6"
   }
 }
