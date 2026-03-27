@@ -116,13 +116,11 @@ async function saveEpisodeData(
       ['wpPageId']
     );
 
-    console.log('result.identifiers', result.identifiers);
-
-    const episode = await episodeRepository.findOneByOrFail({ wpPageId: episodeData.wpPageId });
+    const episodeId = result.identifiers[0].id;
 
     if (mirrors.length > 0) {
       const mirrorRows = mirrors.map((mirror) => ({
-        episode,
+        episode: { id: episodeId },
         code: mirror.code,
         index: mirror.index,
         name: mirror.name,
