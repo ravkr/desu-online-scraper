@@ -69,8 +69,10 @@ export default defineConfig([
         exceptions: ['-', '+']
       }],
       '@stylistic/eol-last': ['error', 'always'],
+      '@stylistic/quote-props': ['error', 'consistent-as-needed'],
       '@stylistic/quotes': ['error', 'single', {
-        avoidEscape: true
+        avoidEscape: true,
+        allowTemplateLiterals: 'avoidEscape'
       }]
     }
   }
