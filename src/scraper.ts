@@ -136,4 +136,28 @@ async function saveEpisodeData(
   });
 }
 
-await scrapeEpisodePage();
+// await scrapeEpisodePage();
+
+export async function getPagesToScrape(limit?: number): Promise<string[]> {
+  if (limit !== undefined && limit <= 0) {
+    return [];
+  }
+
+  const pageRepository = AppDataSource.getRepository(PageEntity);
+
+  const query = pageRepository
+    .createQueryBuilder('page')
+    .leftJoin(EpisodeEntity, 'episodes', 'episodes."pageId" = page.id')
+    .where(`episodes.id IS NULL AND page."sitemapSource" = 'post' AND page.skip IS NOT TRUE`)
+    .orderBy('page.url', 'ASC')
+    .select('page.url', 'url')
+    .limit(limit);
+
+  // console.log('query', query.getQuery(), query.getParameters());
+  const rows = await query.getRawMany<{ url: string }>();
+
+  return rows.map((row) => row.url);
+}
+
+console.log(await getPagesToScrape(30));
+

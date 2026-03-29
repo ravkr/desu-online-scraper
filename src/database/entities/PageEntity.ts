@@ -15,6 +15,9 @@ export class PageEntity {
   @Column({ type: 'timestamp', nullable: true })
   sitemapLastModified!: Date | null;
 
+  @Column({ type: 'boolean', default: false })
+  skip!: boolean;
+
   @CreateDateColumn({ type: 'timestamp' })
   firstSeen!: Date;
 
