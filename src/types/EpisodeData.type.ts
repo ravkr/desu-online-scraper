@@ -3,7 +3,8 @@ export type EpisodeData = {
   author: string,
   datePublished: Date | undefined,
   dataModified: Date | undefined,
-  seriesName: string,
+  seriesName: string | undefined,
+  seriesTitle: string | undefined,
   imageUrl: string | undefined,
   wpPageId: number
 }

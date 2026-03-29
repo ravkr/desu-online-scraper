@@ -4,12 +4,16 @@ import {
   PrimaryGeneratedColumn,
   Column,
   OneToMany,
+  ManyToOne,
+  JoinColumn,
   Index,
   CreateDateColumn,
-  UpdateDateColumn, OneToOne
+  UpdateDateColumn,
+  OneToOne
 } from 'typeorm';
 import { EpisodeSourceEntity } from './EpisodeSourceEntity.js';
 import { PageEntity } from './PageEntity.js';
+import { SeriesEntity } from './SeriesEntity.js';
 
 @Entity('episodes')
 export class EpisodeEntity {
@@ -37,8 +41,14 @@ export class EpisodeEntity {
   dateModified!: Date;
 
   @Index()
-  @Column({ type: 'varchar' })
-  seriesName!: string;
+  @Column({ type: 'integer' })
+  seriesId!: number;
+
+  @ManyToOne(() => SeriesEntity, (series) => series.episodes, {
+    nullable: false
+  })
+  @JoinColumn({ name: 'seriesId' })
+  series!: SeriesEntity;
 
   @Column({ type: 'varchar', nullable: true })
   imageUrl!: string;

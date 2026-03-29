@@ -7,6 +7,7 @@ import { YoastArticleTag, YoastSeo } from './types/YoastSeo.types.js';
 import { EpisodeData } from './types/EpisodeData.type.js';
 import { EpisodeEntity } from './database/entities/EpisodeEntity.js';
 import { EpisodeSourceEntity } from './database/entities/EpisodeSourceEntity.js';
+import { SeriesEntity } from './database/entities/SeriesEntity.js';
 import { SourceStatus } from './database/SourceStatus.js';
 
 
@@ -61,6 +62,7 @@ async function scrapeEpisodePage() {
     datePublished: articleTag?.datePublished ? new Date(articleTag.datePublished) : undefined,
     dataModified: articleTag?.dateModified ? new Date(articleTag.dateModified) : undefined,
     seriesName: animeSeriesName,
+    seriesTitle: articleTag?.articleSection,
     imageUrl,
     wpPageId
   } as EpisodeData;
@@ -88,6 +90,7 @@ async function saveEpisodeData(
     const pageRepository = manager.getRepository(PageEntity);
     const episodeRepository = manager.getRepository(EpisodeEntity);
     const sourceRepository = manager.getRepository(EpisodeSourceEntity);
+    const seriesRepository = manager.getRepository(SeriesEntity);
 
     let pageEntity = await pageRepository.findOneBy({ url });
 
@@ -101,6 +104,23 @@ async function saveEpisodeData(
       await pageRepository.save(pageEntity);
     }
 
+    if (!episodeData.seriesName) {
+      throw new Error(`Series name not found for ${url}`);
+    }
+
+    const normalizedSeriesTitle = episodeData.seriesTitle?.trim() || null;
+    let seriesEntity = await seriesRepository.findOneBy({ seriesName: episodeData.seriesName });
+
+    if (!seriesEntity) {
+      seriesEntity = await seriesRepository.save(seriesRepository.create({
+        seriesName: episodeData.seriesName,
+        seriesTitle: normalizedSeriesTitle
+      }));
+    } else if (normalizedSeriesTitle && seriesEntity.seriesTitle !== normalizedSeriesTitle) {
+      seriesEntity.seriesTitle = normalizedSeriesTitle;
+      seriesEntity = await seriesRepository.save(seriesEntity);
+    }
+
     const result = await episodeRepository.upsert(
       {
         title: episodeData.title,
@@ -109,7 +129,7 @@ async function saveEpisodeData(
         author: episodeData.author || null,
         datePublished: episodeData.datePublished || null,
         dateModified: episodeData.dataModified || null,
-        seriesName: episodeData.seriesName,
+        seriesId: seriesEntity.id,
         imageUrl: episodeData.imageUrl || null,
         pageEntity
       } as any,

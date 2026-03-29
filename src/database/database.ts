@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm';
 import { PageEntity } from './entities/PageEntity.js';
 import { EpisodeEntity } from './entities/EpisodeEntity.js';
 import { EpisodeSourceEntity } from './entities/EpisodeSourceEntity.js';
+import { SeriesEntity } from './entities/SeriesEntity.js';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
@@ -11,7 +12,7 @@ export const AppDataSource = new DataSource({
   username: 'desu-online-scraper',
   password: '',
   database: 'desu_online_scraper',
-  entities: [PageEntity, EpisodeEntity, EpisodeSourceEntity],
+  entities: [PageEntity, SeriesEntity, EpisodeEntity, EpisodeSourceEntity],
   synchronize: true // TODO: this is only for development
 });
 
