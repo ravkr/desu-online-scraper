@@ -9,12 +9,23 @@ import { EpisodeEntity } from './database/entities/EpisodeEntity.js';
 import { EpisodeSourceEntity } from './database/entities/EpisodeSourceEntity.js';
 import { SeriesEntity } from './database/entities/SeriesEntity.js';
 import { SourceStatus } from './database/SourceStatus.js';
+import { setTimeout } from 'node:timers/promises';
 
+type EpisodeMirror = {
+  code: string;
+  index: string;
+  name: string;
+};
 
-async function scrapeEpisodePage() {
-  const url = 'https://desu-online.pl/shingeki-no-kyojin-odcinek-1/';
+function getEpisodeNumber(url: string): number | null {
+  const match = url.match(/odcinek-(\d+)/);
+  const parsed = match ? Number.parseInt(match[1], 10) : null;
+
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+async function scrapeEpisodePage(url: string) {
   const bc = BrowserController.getInstance();
-  await bc.openBrowser();
 
   const page = await bc.newPage();
 
@@ -41,7 +52,7 @@ async function scrapeEpisodePage() {
 
   await page.goto(url);
 
-  const resultObj = await page.evaluate('[...document.querySelectorAll(\'div.video-nav div.mobius select.mirror option[data-index]\')].map(el => ({code: atob(el.value), index: el.dataset.index, name: el.text}))');
+  const episodeMirrors = await page.evaluate('[...document.querySelectorAll(\'div.video-nav div.mobius select.mirror option[data-index]\')].map(el => ({code: atob(el.value), index: el.dataset.index, name: el.text}))') as EpisodeMirror[];
 
   const yoastSeoString = await page.evaluate('document.querySelector(\'script[type="application/ld+json"].yoast-schema-graph\')?.textContent;') as string;
 
@@ -56,21 +67,25 @@ async function scrapeEpisodePage() {
   const animeSeriesUrl = await page.evaluate('document.querySelector(\'div.lm > span.year > a\').href;') as string;
   const animeSeriesName = animeSeriesUrl.match(/anime\/([^/]+)\//)?.[1];
 
-  const episodeNumber = await page.evaluate(() => {
+  const episodeNumberName = await page.evaluate(() => {
     const content = document.querySelector('meta[itemprop="episodeNumber"]')?.getAttribute('content')?.trim();
 
     if (!content) {
       return null;
     }
 
-    const parsed = Number.parseInt(content, 10);
-
-    return Number.isNaN(parsed) ? null : parsed;
+    return content;
   });
+
+  const episodeNumber = getEpisodeNumber(url);
 
   if (typeof episodeNumber !== 'number' || !Number.isInteger(episodeNumber) || episodeNumber <= 0) {
     throw new Error(`Invalid episode number for ${url}`);
   }
+
+  const normalizedEpisodeNumberName = typeof episodeNumberName === 'string' && episodeNumberName.trim().length > 0
+    ? episodeNumberName.trim()
+    : String(episodeNumber);
 
   const episodeData : EpisodeData = {
     title: articleTag?.headline || '',
@@ -78,18 +93,16 @@ async function scrapeEpisodePage() {
     datePublished: articleTag?.datePublished ? new Date(articleTag.datePublished) : undefined,
     dataModified: articleTag?.dateModified ? new Date(articleTag.dateModified) : undefined,
     seriesName: animeSeriesName,
-    seriesTitle: articleTag?.articleSection,
+    seriesTitle: articleTag?.articleSection?.[0],
     imageUrl,
     wpPageId,
-    episodeNumber
+    episodeNumber,
+    episodeNumberName: normalizedEpisodeNumberName
   } as EpisodeData;
 
-  console.log(episodeData);
-
-  await saveEpisodeData(url, episodeData, resultObj as any);
+  await saveEpisodeData(url, episodeData, episodeMirrors);
 
   await page.close();
-  await bc.closeBrowser();
 }
 
 export function extractMirrorUrl(code: string): string | null {
@@ -101,7 +114,7 @@ export function extractMirrorUrl(code: string): string | null {
 async function saveEpisodeData(
   url: string,
   episodeData: EpisodeData,
-  mirrors: {code: string, index: string, name: string}[]
+  mirrors: EpisodeMirror[]
 ) {
   await AppDataSource.transaction(async (manager) => {
     const pageRepository = manager.getRepository(PageEntity);
@@ -144,6 +157,7 @@ async function saveEpisodeData(
         pageId: pageEntity.id,
         wpPageId: episodeData.wpPageId,
         episodeNumber: episodeData.episodeNumber,
+        episodeNumberName: episodeData.episodeNumberName,
         author: episodeData.author || null,
         datePublished: episodeData.datePublished || null,
         dateModified: episodeData.dataModified || null,
@@ -170,7 +184,7 @@ async function saveEpisodeData(
       await sourceRepository.upsert(mirrorRows as any, ['episode', 'code']);
     }
 
-    console.log(`Saved episode ${episodeData.wpPageId} with ${mirrors.length} mirrors.`);
+    console.log(`Saved episode "${url}" (${episodeData.wpPageId}) with ${mirrors.length} mirrors.`);
   });
 }
 
@@ -195,7 +209,22 @@ export async function getPagesToScrape(limit?: number): Promise<string[]> {
   return rows.map((row) => row.url);
 }
 
-const pages = await getPagesToScrape(30);
+async function scrapePages() {
+  const bc = BrowserController.getInstance();
+  await bc.openBrowser();
 
-console.log(pages);
-// await scrapeEpisodePage(page[0]);
+  const pages = await getPagesToScrape(100);
+
+  for (const page of pages) {
+    try {
+      await scrapeEpisodePage(page);
+    } catch (e) {
+      console.error(e);
+      await setTimeout(1000 * 60 * 60); // 1h
+    }
+  }
+
+  await bc.closeBrowser();
+}
+
+await scrapePages();
