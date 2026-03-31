@@ -16,6 +16,7 @@ import { PageEntity } from './PageEntity.js';
 import { SeriesEntity } from './SeriesEntity.js';
 
 @Entity('episodes')
+@Index(['seriesId', 'episodeNumber'], { unique: true })
 export class EpisodeEntity {
   @PrimaryGeneratedColumn()
   id!: number;
