@@ -28,6 +28,10 @@ export class EpisodeEntity {
   @Column({ type: 'integer' })
   wpPageId!: number;
 
+  @Index()
+  @Column({ type: 'integer' })
+  episodeNumber!: number;
+
   @Column({ type: 'varchar' })
   title!: string;
 

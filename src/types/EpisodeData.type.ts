@@ -6,5 +6,6 @@ export type EpisodeData = {
   seriesName: string | undefined,
   seriesTitle: string | undefined,
   imageUrl: string | undefined,
-  wpPageId: number
+  wpPageId: number,
+  episodeNumber: number
 }

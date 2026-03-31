@@ -56,6 +56,22 @@ async function scrapeEpisodePage() {
   const animeSeriesUrl = await page.evaluate('document.querySelector(\'div.lm > span.year > a\').href;') as string;
   const animeSeriesName = animeSeriesUrl.match(/anime\/([^/]+)\//)?.[1];
 
+  const episodeNumber = await page.evaluate(() => {
+    const content = document.querySelector('meta[itemprop="episodeNumber"]')?.getAttribute('content')?.trim();
+
+    if (!content) {
+      return null;
+    }
+
+    const parsed = Number.parseInt(content, 10);
+
+    return Number.isNaN(parsed) ? null : parsed;
+  });
+
+  if (typeof episodeNumber !== 'number' || !Number.isInteger(episodeNumber) || episodeNumber <= 0) {
+    throw new Error(`Invalid episode number for ${url}`);
+  }
+
   const episodeData : EpisodeData = {
     title: articleTag?.headline || '',
     author: articleTag?.author?.name || '',
@@ -64,7 +80,8 @@ async function scrapeEpisodePage() {
     seriesName: animeSeriesName,
     seriesTitle: articleTag?.articleSection,
     imageUrl,
-    wpPageId
+    wpPageId,
+    episodeNumber
   } as EpisodeData;
 
   console.log(episodeData);
@@ -126,6 +143,7 @@ async function saveEpisodeData(
         title: episodeData.title,
         pageId: pageEntity.id,
         wpPageId: episodeData.wpPageId,
+        episodeNumber: episodeData.episodeNumber,
         author: episodeData.author || null,
         datePublished: episodeData.datePublished || null,
         dateModified: episodeData.dataModified || null,
@@ -156,8 +174,6 @@ async function saveEpisodeData(
   });
 }
 
-// await scrapeEpisodePage();
-
 export async function getPagesToScrape(limit?: number): Promise<string[]> {
   if (limit !== undefined && limit <= 0) {
     return [];
@@ -179,5 +195,7 @@ export async function getPagesToScrape(limit?: number): Promise<string[]> {
   return rows.map((row) => row.url);
 }
 
-console.log(await getPagesToScrape(30));
+const pages = await getPagesToScrape(30);
 
+console.log(pages);
+// await scrapeEpisodePage(page[0]);
