@@ -10,6 +10,7 @@ import { EpisodeSourceEntity } from './database/entities/EpisodeSourceEntity.js'
 import { SeriesEntity } from './database/entities/SeriesEntity.js';
 import { SourceStatus } from './database/SourceStatus.js';
 import { setTimeout } from 'node:timers/promises';
+import { Page } from 'puppeteer';
 
 type EpisodeMirror = {
   code: string;
@@ -17,11 +18,21 @@ type EpisodeMirror = {
   name: string;
 };
 
-function getEpisodeNumber(url: string): number | null {
-  const match = url.match(/odcinek-(\d+)/);
-  const parsed = match ? Number.parseInt(match[1], 10) : null;
+async function getEpisodeNumber(page: Page, wpId: number): Promise<number> {
+  // Getting episode number from URL is not reliable,
+  // as sometimes "episode 7" might have "...-odcinek-6-2" instead of "...-odcinek-7".
+  // Instead, we're getting position from list with all episodes. This list is sorted in reverse order.
+  return await page.evaluate((dataId) => {
+    const el = document.querySelector(`li[data-id="${dataId}"]`);
 
-  return Number.isNaN(parsed) ? null : parsed;
+    if (!el || !el.parentElement) {
+      throw new Error('Could not find episode number from episodes list.');
+    }
+
+    const children = Array.from(el.parentElement.children);
+
+    return children.length - children.indexOf(el);
+  }, wpId);
 }
 
 async function scrapeEpisodePage(url: string) {
@@ -77,9 +88,9 @@ async function scrapeEpisodePage(url: string) {
     return content;
   });
 
-  const episodeNumber = getEpisodeNumber(url);
+  const episodeNumber = await getEpisodeNumber(page, wpPageId);
 
-  if (typeof episodeNumber !== 'number' || !Number.isInteger(episodeNumber) || episodeNumber <= 0) {
+  if (!Number.isInteger(episodeNumber) || episodeNumber <= 0) {
     throw new Error(`Invalid episode number for ${url}`);
   }
 
