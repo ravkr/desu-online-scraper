@@ -20,21 +20,51 @@ type EpisodeMirror = {
   name: string;
 };
 
-async function getEpisodeNumber(page: Page, wpId: number): Promise<number> {
+async function getEpisodeNumber(page: Page, wpId: number, fallbackEpisodeUrl: string): Promise<number> {
   // Getting episode number from URL is not reliable,
   // as sometimes "episode 7" might have "...-odcinek-6-2" instead of "...-odcinek-7".
   // Instead, we're getting position from list with all episodes. This list is sorted in reverse order.
-  return await page.evaluate((dataId) => {
+  const numberByWpId = await page.evaluate((dataId) => {
     const el = document.querySelector(`li[data-id="${dataId}"]`);
 
-    if (!el || !el.parentElement) {
-      throw new Error('Could not find episode number from episodes list.');
+    if (el && el.parentElement) {
+      const children = Array.from(el.parentElement.children);
+
+      return children.length - children.indexOf(el);
     }
 
+    return null;
+  }, wpId);
+
+  if (numberByWpId) {
+    return numberByWpId;
+  }
+
+  // Edge case, when there are two episode-posts with the same slug, and browser loads the latest post,
+  // but links on the episode list point to the older post. In this case, we can try to find episode number by URL.
+  // Example: https://desu-online.pl/5-toubun-no-hanayome-odcinek-1/
+  const [numberByUrl, dataId] = await page.evaluate((url) => {
+    const el = document.querySelector(`li[data-id]:has(a[href="${CSS.escape(url)}"])`)!;
+
+    if (!el || !el.parentElement) {
+      return [null, null];
+    }
+
+    const dataId = Number(el.getAttribute('data-id'));
     const children = Array.from(el.parentElement.children);
 
-    return children.length - children.indexOf(el);
-  }, wpId);
+    return [children.length - children.indexOf(el), dataId];
+  }, fallbackEpisodeUrl);
+
+  if (!numberByUrl) {
+    throw new Error('Could not find episode number from episodes list.');
+  }
+
+  if (dataId !== wpId) {
+    console.warn(`Episode list mismatch: expected wpId=${wpId}, found data-id=${dataId}.`);
+  }
+
+  return numberByUrl;
 }
 
 async function scrapeEpisodePage(url: string) {
@@ -96,7 +126,7 @@ async function scrapeEpisodePage(url: string) {
     return content;
   });
 
-  const episodeNumber = await getEpisodeNumber(page, wpPageId);
+  const episodeNumber = await getEpisodeNumber(page, wpPageId, url);
 
   if (!Number.isInteger(episodeNumber) || episodeNumber <= 0) {
     throw new Error(`Invalid episode number for ${url}`);
