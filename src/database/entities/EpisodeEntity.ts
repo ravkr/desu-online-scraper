@@ -14,6 +14,7 @@ import {
 import { EpisodeSourceEntity } from './EpisodeSourceEntity.js';
 import { PageEntity } from './PageEntity.js';
 import { SeriesEntity } from './SeriesEntity.js';
+import { ImageEntity } from './ImageEntity.js';
 
 @Entity('episodes')
 @Index(['seriesId', 'episodeNumber'], { unique: true })
@@ -58,8 +59,14 @@ export class EpisodeEntity {
   @JoinColumn({ name: 'seriesId' })
   series!: SeriesEntity;
 
-  @Column({ type: 'varchar', nullable: true })
-  imageUrl!: string;
+  @Column({ type: 'integer', nullable: true })
+  imageId!: number | null;
+
+  @ManyToOne(() => ImageEntity, (image) => image.episodes, {
+    nullable: true
+  })
+  @JoinColumn({ name: 'imageId' })
+  image!: ImageEntity | null;
 
   @OneToOne(() => PageEntity, { cascade: true })
   pageEntity!: PageEntity;

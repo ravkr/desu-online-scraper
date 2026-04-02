@@ -8,6 +8,7 @@ import { EpisodeData } from './types/EpisodeData.type.js';
 import { EpisodeEntity } from './database/entities/EpisodeEntity.js';
 import { EpisodeSourceEntity } from './database/entities/EpisodeSourceEntity.js';
 import { SeriesEntity } from './database/entities/SeriesEntity.js';
+import { ImageEntity } from './database/entities/ImageEntity.js';
 import { SourceStatus } from './database/SourceStatus.js';
 import { setTimeout } from 'node:timers/promises';
 import { Page } from 'puppeteer';
@@ -132,6 +133,7 @@ async function saveEpisodeData(
     const episodeRepository = manager.getRepository(EpisodeEntity);
     const sourceRepository = manager.getRepository(EpisodeSourceEntity);
     const seriesRepository = manager.getRepository(SeriesEntity);
+    const imageRepository = manager.getRepository(ImageEntity);
 
     let pageEntity = await pageRepository.findOneBy({ url });
 
@@ -162,6 +164,18 @@ async function saveEpisodeData(
       seriesEntity = await seriesRepository.save(seriesEntity);
     }
 
+    let imageEntity: ImageEntity | null = null;
+
+    if (episodeData.imageUrl) {
+      imageEntity = await imageRepository.findOneBy({ url: episodeData.imageUrl });
+
+      if (!imageEntity) {
+        imageEntity = await imageRepository.save(imageRepository.create({
+          url: episodeData.imageUrl
+        }));
+      }
+    }
+
     const result = await episodeRepository.upsert(
       {
         title: episodeData.title,
@@ -173,7 +187,7 @@ async function saveEpisodeData(
         datePublished: episodeData.datePublished || null,
         dateModified: episodeData.dataModified || null,
         seriesId: seriesEntity.id,
-        imageUrl: episodeData.imageUrl || null,
+        imageId: imageEntity?.id || null,
         pageEntity
       } as any,
       ['wpPageId']
