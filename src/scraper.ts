@@ -12,6 +12,7 @@ import { ImageEntity } from './database/entities/ImageEntity.js';
 import { SourceStatus } from './database/SourceStatus.js';
 import { setTimeout } from 'node:timers/promises';
 import { Page } from 'puppeteer';
+import { handleAgeGate } from './browser/ageGateHandler.js';
 
 type EpisodeMirror = {
   code: string;
@@ -63,8 +64,14 @@ async function scrapeEpisodePage(url: string) {
   });
 
   await page.goto(url);
+  await handleAgeGate(page);
 
   const episodeMirrors = await page.evaluate('[...document.querySelectorAll(\'div.video-nav div.mobius select.mirror option[data-index]\')].map(el => ({code: atob(el.value), index: el.dataset.index, name: el.text}))') as EpisodeMirror[];
+
+  if (!episodeMirrors || episodeMirrors.length === 0) {
+    console.warn(`No mirrors found for ${url}`);
+    throw new Error(`No mirrors found for ${url}`);
+  }
 
   const yoastSeoString = await page.evaluate('document.querySelector(\'script[type="application/ld+json"].yoast-schema-graph\')?.textContent;') as string;
 
