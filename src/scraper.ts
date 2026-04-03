@@ -11,6 +11,7 @@ import { SeriesEntity } from './database/entities/SeriesEntity.js';
 import { ImageEntity } from './database/entities/ImageEntity.js';
 import { SourceStatus } from './database/SourceStatus.js';
 import { setTimeout } from 'node:timers/promises';
+import { appendFile } from 'node:fs/promises';
 import { Page } from 'puppeteer';
 import { handleAgeGate } from './browser/ageGateHandler.js';
 
@@ -19,6 +20,27 @@ type EpisodeMirror = {
   index: string;
   name: string;
 };
+
+const WARNINGS_LOG_FILE = 'warnings.log';
+const TIMINGS_LOG_FILE = 'timings.log';
+
+async function appendWarningLog(payload: Record<string, unknown>) {
+  try {
+    const line = `${JSON.stringify({ timestamp: new Date().toISOString(), ...payload })}\n`;
+    await appendFile(WARNINGS_LOG_FILE, line, 'utf8');
+  } catch (error) {
+    console.error('Failed to append warning log:', error);
+  }
+}
+
+async function appendTimingLog(payload: Record<string, unknown>) {
+  try {
+    const line = `${JSON.stringify({ timestamp: new Date().toISOString(), ...payload })}\n`;
+    await appendFile(TIMINGS_LOG_FILE, line, 'utf8');
+  } catch (error) {
+    console.error('Failed to append timing log:', error);
+  }
+}
 
 async function getEpisodeNumber(page: Page, wpId: number, fallbackEpisodeUrl: string): Promise<number> {
   // Getting episode number from URL is not reliable,
@@ -61,7 +83,17 @@ async function getEpisodeNumber(page: Page, wpId: number, fallbackEpisodeUrl: st
   }
 
   if (dataId !== wpId) {
-    console.warn(`Episode list mismatch: expected wpId=${wpId}, found data-id=${dataId}.`);
+    const warningMessage = `Episode list mismatch: expected wpId=${wpId}, found data-id=${dataId}.`;
+
+    console.warn(warningMessage);
+    await appendWarningLog({
+      type: 'EPISODE_LIST_MISMATCH',
+      message: warningMessage,
+      url: fallbackEpisodeUrl,
+      expectedWpId: wpId,
+      foundDataId: dataId,
+      resolvedEpisodeNumber: numberByUrl
+    });
   }
 
   return numberByUrl;
@@ -277,11 +309,36 @@ async function scrapePages() {
 
   const pages = await getPagesToScrape(100);
 
-  for (const page of pages) {
+  for (const pageUrl of pages) {
+    const startedAt = new Date().toISOString();
+    const startedAtNs = process.hrtime.bigint();
+
     try {
-      await scrapeEpisodePage(page);
+      await scrapeEpisodePage(pageUrl);
+
+      const durationMs = Number(process.hrtime.bigint() - startedAtNs) / 1_000_000;
+      await appendTimingLog({
+        event: 'SCRAPE_EPISODE_PAGE',
+        status: 'success',
+        url: pageUrl,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        durationMs
+      });
     } catch (e) {
       console.error(e);
+
+      const durationMs = Number(process.hrtime.bigint() - startedAtNs) / 1_000_000;
+      await appendTimingLog({
+        event: 'SCRAPE_EPISODE_PAGE',
+        status: 'error',
+        url: pageUrl,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        durationMs,
+        errorMessage: e instanceof Error ? e.message : String(e)
+      });
+
       await setTimeout(1000 * 60 * 60); // 1h
     }
   }
