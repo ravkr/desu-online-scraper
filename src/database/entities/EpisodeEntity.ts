@@ -12,6 +12,7 @@ import {
   OneToOne
 } from 'typeorm';
 import { EpisodeSourceEntity } from './EpisodeSourceEntity.js';
+import { EpisodeDownloadEntity } from './EpisodeDownloadEntity.js';
 import { PageEntity } from './PageEntity.js';
 import { SeriesEntity } from './SeriesEntity.js';
 import { ImageEntity } from './ImageEntity.js';
@@ -73,6 +74,9 @@ export class EpisodeEntity {
 
   @OneToMany(() => EpisodeSourceEntity, (s) => s.episode)
   sources!: EpisodeSourceEntity[];
+
+  @OneToOne(() => EpisodeDownloadEntity, (download) => download.episode)
+  download!: EpisodeDownloadEntity | null;
 
   @CreateDateColumn()
   createdAt: Date | undefined;

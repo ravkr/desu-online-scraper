@@ -7,6 +7,7 @@ import { YoastArticleTag, YoastSeo } from './types/YoastSeo.types.js';
 import { EpisodeData } from './types/EpisodeData.type.js';
 import { EpisodeEntity } from './database/entities/EpisodeEntity.js';
 import { EpisodeSourceEntity } from './database/entities/EpisodeSourceEntity.js';
+import { EpisodeDownloadEntity } from './database/entities/EpisodeDownloadEntity.js';
 import { SeriesEntity } from './database/entities/SeriesEntity.js';
 import { ImageEntity } from './database/entities/ImageEntity.js';
 import { SourceStatus } from './database/SourceStatus.js';
@@ -135,11 +136,13 @@ async function scrapeEpisodePage(url: string) {
     throw new Error(`No mirrors found for ${url}`);
   }
 
+  const downloadUrl = await page.evaluate('document.querySelector(\'a:has(.fa-cloud-download-alt)\')?.href') as string | undefined;
+
   const yoastSeoString = await page.evaluate('document.querySelector(\'script[type="application/ld+json"].yoast-schema-graph\')?.textContent;') as string;
 
   const yoastSeo = JSON.parse(yoastSeoString) as YoastSeo;
 
-  const articleTag = yoastSeo['@graph'].find((el: any) => el['@type'] === 'Article') as YoastArticleTag | undefined;
+  const articleTag = yoastSeo['@graph'].find((el): el is YoastArticleTag => el['@type'] === 'Article');
 
   const imageUrl = await page.evaluate('document.querySelector(\'meta[property="og:image"]\')?.content;') as string;
 
@@ -176,6 +179,7 @@ async function scrapeEpisodePage(url: string) {
     seriesName: animeSeriesName,
     seriesTitle: articleTag?.articleSection?.[0],
     imageUrl,
+    downloadUrl,
     wpPageId,
     episodeNumber,
     episodeNumberName: normalizedEpisodeNumberName
@@ -201,6 +205,7 @@ async function saveEpisodeData(
     const pageRepository = manager.getRepository(PageEntity);
     const episodeRepository = manager.getRepository(EpisodeEntity);
     const sourceRepository = manager.getRepository(EpisodeSourceEntity);
+    const downloadRepository = manager.getRepository(EpisodeDownloadEntity);
     const seriesRepository = manager.getRepository(SeriesEntity);
     const imageRepository = manager.getRepository(ImageEntity);
 
@@ -265,17 +270,46 @@ async function saveEpisodeData(
     const episodeId = result.identifiers[0].id;
 
     if (mirrors.length > 0) {
-      const mirrorRows = mirrors.map((mirror) => ({
-        episode: { id: episodeId },
-        code: mirror.code,
-        index: mirror.index,
-        name: mirror.name,
-        url: extractMirrorUrl(mirror.code),
-        status: SourceStatus.UNKNOWN,
-        lastCheckedAt: null
-      }));
+      const mirrorRows = mirrors
+        .map((mirror) => {
+          const mirrorUrl = extractMirrorUrl(mirror.code);
 
-      await sourceRepository.upsert(mirrorRows as any, ['episode', 'code']);
+          if (!mirrorUrl) {
+            return null;
+          }
+
+          return {
+            episode: { id: episodeId } as EpisodeEntity,
+            code: mirror.code,
+            index: mirror.index,
+            name: mirror.name,
+            url: mirrorUrl,
+            status: SourceStatus.UNKNOWN,
+            lastCheckedAt: null
+          };
+        })
+        .filter((row): row is {
+          episode: EpisodeEntity;
+          code: string;
+          index: string;
+          name: string;
+          url: string;
+          status: SourceStatus;
+          lastCheckedAt: null;
+        } => row !== null);
+
+      if (mirrorRows.length > 0) {
+        await sourceRepository.upsert(mirrorRows, ['episode', 'code']);
+      }
+    }
+
+    if (episodeData.downloadUrl) {
+      const downloadRow: Pick<EpisodeDownloadEntity, 'episodeId' | 'downloadUrl'> = {
+        episodeId,
+        downloadUrl: episodeData.downloadUrl
+      };
+
+      await downloadRepository.upsert(downloadRow, ['episodeId']);
     }
 
     console.log(`Saved episode "${url}" (${episodeData.wpPageId}) with ${mirrors.length} mirrors.`);
