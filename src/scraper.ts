@@ -132,7 +132,6 @@ async function scrapeEpisodePage(url: string) {
   const episodeMirrors = await page.evaluate('[...document.querySelectorAll(\'div.video-nav div.mobius select.mirror option[data-index]\')].map(el => ({code: atob(el.value), index: el.dataset.index, name: el.text}))') as EpisodeMirror[];
 
   if (!episodeMirrors || episodeMirrors.length === 0) {
-    console.warn(`No mirrors found for ${url}`);
     throw new Error(`No mirrors found for ${url}`);
   }
 
@@ -150,6 +149,10 @@ async function scrapeEpisodePage(url: string) {
 
   const animeSeriesUrl = await page.evaluate('document.querySelector(\'div.lm > span.year > a\').href;') as string;
   const animeSeriesName = animeSeriesUrl.match(/anime\/([^/]+)\//)?.[1];
+
+  if (!animeSeriesName) {
+    throw new Error(`No anime series name found. Anime series URL: ${animeSeriesUrl}`);
+  }
 
   const episodeNumberName = await page.evaluate(() => {
     const content = document.querySelector('meta[itemprop="episodeNumber"]')?.getAttribute('content')?.trim();
