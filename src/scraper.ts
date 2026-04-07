@@ -12,7 +12,7 @@ import { SeriesEntity } from './database/entities/SeriesEntity.js';
 import { ImageEntity } from './database/entities/ImageEntity.js';
 import { SourceStatus } from './database/SourceStatus.js';
 import { setTimeout } from 'node:timers/promises';
-import { appendFile } from 'node:fs/promises';
+import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { Page } from 'puppeteer';
 import { handleAgeGate } from './browser/ageGateHandler.js';
 
@@ -22,8 +22,17 @@ type EpisodeMirror = {
   name: string;
 };
 
-const WARNINGS_LOG_FILE = 'warnings.log';
-const TIMINGS_LOG_FILE = 'timings.log';
+function formatDateForFilename(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+const LOG_DATE = formatDateForFilename();
+const WARNINGS_LOG_FILE = `${LOG_DATE}-warnings.log`;
+const TIMINGS_LOG_FILE = `${LOG_DATE}-timings.log`;
 
 async function appendWarningLog(payload: Record<string, unknown>) {
   try {
@@ -41,6 +50,51 @@ async function appendTimingLog(payload: Record<string, unknown>) {
   } catch (error) {
     console.error('Failed to append timing log:', error);
   }
+}
+
+function dedupeMirrorsByUrl(mirrors: EpisodeMirror[]) {
+  const uniqueMirrors: EpisodeMirror[] = [];
+  const seenUrls = new Set<string>();
+  const duplicateUrls = new Set<string>();
+
+  for (const mirror of mirrors) {
+    const mirrorUrl = extractMirrorUrl(mirror.code)?.trim();
+
+    if (!mirrorUrl) {
+      uniqueMirrors.push(mirror);
+      continue;
+    }
+
+    if (seenUrls.has(mirrorUrl)) {
+      duplicateUrls.add(mirrorUrl);
+      continue;
+    }
+
+    seenUrls.add(mirrorUrl);
+    uniqueMirrors.push(mirror);
+  }
+
+  return {
+    uniqueMirrors,
+    duplicateUrls: Array.from(duplicateUrls),
+    droppedCount: mirrors.length - uniqueMirrors.length
+  };
+}
+
+async function dumpDuplicateMirrors(url: string, mirrors: EpisodeMirror[], duplicateUrls: string[]): Promise<string> {
+  const timestamp = new Date().toISOString();
+  const safeUrlPart = url
+    .replace(/^https?:\/\//, '')
+    .replace(/[^a-zA-Z0-9-_]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 120);
+  const filename = `${timestamp.replace(/[:.]/g, '-')}-duplicate-mirrors-${safeUrlPart || 'unknown'}.json`;
+  const filePath = `logs/${filename}`;
+
+  await mkdir('logs', { recursive: true });
+  await writeFile(filePath, JSON.stringify({ timestamp, url, duplicateUrls, mirrors }, null, 2), 'utf8');
+
+  return filePath;
 }
 
 async function getEpisodeNumber(page: Page, wpId: number, fallbackEpisodeUrl: string): Promise<number> {
@@ -135,6 +189,24 @@ async function scrapeEpisodePage(url: string) {
     throw new Error(`No mirrors found for ${url}`);
   }
 
+  const { uniqueMirrors, duplicateUrls, droppedCount } = dedupeMirrorsByUrl(episodeMirrors);
+
+  if (droppedCount > 0) {
+    const dumpFilePath = await dumpDuplicateMirrors(url, episodeMirrors, duplicateUrls);
+    const warningMessage = `Detected duplicated mirror URL(s) for ${url}. Removed ${droppedCount} duplicate mirror(s). Dumped payload to ${dumpFilePath}.`;
+
+    console.warn(warningMessage);
+    await appendWarningLog({
+      type: 'DUPLICATE_MIRROR_URL',
+      message: warningMessage,
+      url,
+      duplicateUrls,
+      originalMirrorsCount: episodeMirrors.length,
+      deduplicatedMirrorsCount: uniqueMirrors.length,
+      dumpFilePath
+    });
+  }
+
   const downloadUrl = await page.evaluate('document.querySelector(\'a:has(.fa-cloud-download-alt)\')?.href') as string | undefined;
 
   const yoastSeoString = await page.evaluate('document.querySelector(\'script[type="application/ld+json"].yoast-schema-graph\')?.textContent;') as string;
@@ -188,7 +260,7 @@ async function scrapeEpisodePage(url: string) {
     episodeNumberName: normalizedEpisodeNumberName
   } as EpisodeData;
 
-  await saveEpisodeData(url, episodeData, episodeMirrors);
+  await saveEpisodeData(url, episodeData, uniqueMirrors);
 
   await page.close();
 }
